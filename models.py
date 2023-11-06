@@ -31,7 +31,7 @@ class Shortcut(Base):
     shortcut_name = Column(String, index=True, nullable=False)
     content_type = Column(String, nullable=False)
     text = Column(String, nullable=True)
-    file_id = Column(String, nullable=True)
+    content = Column(String, nullable=True)
     add_dt = Column(DateTime, nullable=False)
     update_dt = Column(DateTime, nullable=False)
     user = relationship('User', back_populates='shortcuts')
@@ -55,14 +55,14 @@ def get_user(telegram_id: int):
         user = session.query(User).filter_by(telegram_id=telegram_id).first()
         return user
 
-def add_shortcut(shortcut_name: str, telegram_id: int, content_type: str, text: str, file_id: str):
+def add_shortcut(shortcut_name: str, telegram_id: int, content_type: str, text: str, content: str):
     session = Session()
     shortcut = Shortcut(
         shortcut_name=shortcut_name, 
         telegram_id=telegram_id,
         content_type=content_type,
         text=text,
-        file_id=file_id,
+        content=content,
         add_dt=dt.now(),
         update_dt=dt.now()
     )
@@ -82,14 +82,14 @@ def get_shortcut(telegram_id, shortcut_name):
         shortcut = session.query(Shortcut).filter_by(telegram_id=telegram_id, shortcut_name=shortcut_name).first()
         return shortcut
 
-def update_shortcut(shortcut_id: int, new_shortcut_name: str, telegram_id: int, new_content_type: str, new_text: str, new_file_id: str):
+def update_shortcut(shortcut_id: int, new_shortcut_name: str, telegram_id: int, new_content_type: str, new_text: str, new_content: str):
     with Session() as session:
         shortcut = session.query(Shortcut).filter_by(id=shortcut_id).first()
         if shortcut:
             shortcut.shortcut_name = new_shortcut_name
             shortcut.content_type = new_content_type
             shortcut.text = new_text
-            shortcut.file_id = new_file_id
+            shortcut.content = new_content
             session.commit()
 
 def delete_shortcut(shortcut_id):
