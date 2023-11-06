@@ -59,16 +59,17 @@ def get_input_media_by_type(type_name: str) -> tb.types.InputMedia:
     return {
         'photo': tb.types.InlineQueryResultCachedPhoto,
         'video': tb.types.InlineQueryResultCachedVideo,
+        'animation': tb.types.InlineQueryResultCachedMpeg4Gif,
         'document': tb.types.InlineQueryResultCachedDocument,
         'audio': tb.types.InlineQueryResultCachedAudio,
         'location': tb.types.InlineQueryResultLocation,
         'text': tb.types.InlineQueryResultArticle
-    }.get(type_name, None)
+    }.get(type_name)
 
 def get_input_content(shortcut):
     content_class = get_input_media_by_type(shortcut.content_type)
     params = {
-        f'{shortcut.content_type}_file_id': shortcut.content, 
+        f'''{shortcut.content_type if shortcut.content_type != 'animation' else 'mpeg4'}_file_id''': shortcut.content, 
         'caption': shortcut.text,
         'description': shortcut.shortcut_name
     } if shortcut.content_type not in ('text', 'location') \
