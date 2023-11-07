@@ -5,7 +5,7 @@ from datetime import datetime as dt, timedelta as td
 from random import randint
 from os import getcwd, listdir, environ, getenv, makedirs
 from os.path import isfile, join, exists
-from models import create_user, add_shortcut, get_user, get_shortcuts, delete_shortcut, get_shortcut
+from models import create_user, add_shortcut, get_user, get_shortcuts, delete_shortcut, get_shortcut, is_admin, get_users_list
 from random import sample
 from traceback import print_exception, format_exc
 from json import loads, JSONDecodeError
@@ -27,7 +27,7 @@ log_file_path = join(log_directory, log_file_name)
 
 # Настройка логгера
 logging.basicConfig(
-    level=logging.ERROR,  # Уровень логгирования
+    level=logging.INFO,  # Уровень логгирования
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',  # Формат сообщения
     datefmt='%Y-%m-%d %H:%M:%S',  # Формат времени
     handlers=[
@@ -42,7 +42,6 @@ help_message = f'''Here are methods you can use:
 /help - send this message
 /list - list all existing shortcuts
 /add - add a new shortcut
-/update - update an existing shortcut
 /delete - delete an existing shortcut by its name
 
 Send any feedback (questions, feature requests) to @tolord'''
@@ -82,15 +81,19 @@ def get_input_content(shortcut):
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
+    logging.info(f'''{message.from_user.username or message.from_user.id}: {message.text}''')
     if get_user(message.from_user.id):
         bot.reply_to(message=message, text=help_message)
     else:
-        create_user(telegram_id=message.from_user.id, username=message.from_user.username)
-        bot.reply_to(message=message, text=f'''Hi, {message.from_user.first_name} {message.from_user.last_name}! I'm Shortcut Holder, and I will help you to quickly send any frequently used information (I call it Shortcut) to whoever you want very easy. I'll show you how to do it real quick. Just click here right now: /add_shortcut''')
+        params = message.text.split(maxsplit=1)
+        start_param = params[1] if len(params) > 1 else None
+        create_user(telegram_id=message.from_user.id, username=message.from_user.username, start_param=start_param)
+        bot.reply_to(message=message, text=f'''Hi, {message.from_user.first_name} {message.from_user.last_name}! I'm Shortcut Holder, and I will help you to quickly send any frequently used information (I call it Shortcut) to whoever you want very easy. I'll show you how to do it real quick. Just click here right now: /add''')
 
 
 @bot.message_handler(commands=['add'])
 def handle_add_shortcut(message):
+    logging.info(f'''{message.from_user.username or message.from_user.id}: add''')
     msg = bot.reply_to(
         message=message, 
         text='''Send me any one message you want. It can be a text and/or one of the following media types audio, document, video, voice message, location or poll. E.g. you can send me your __business__ card like this one:
@@ -114,7 +117,9 @@ def process_add_shortcut_name(prev_message):
     context = {
         'text': prev_message.text if prev_message.content_type == 'text' else prev_message.caption,
         'content_type': prev_message.content_type,
-        'content': get_first_or_obj(getattr(prev_message, prev_message.content_type)).file_id if prev_message.content_type not in ('text', 'location') else prev_message.location.to_json() if prev_message.content_type == 'location' else None
+        'content': get_first_or_obj(getattr(prev_message, prev_message.content_type)).file_id if prev_message.content_type not in ('text', 'location') \
+                    else prev_message.location.to_json() if prev_message.content_type == 'location' \
+                    else None
     }
     def inner(message):
         try:
@@ -122,6 +127,7 @@ def process_add_shortcut_name(prev_message):
             context['shortcut_name'] = message.text
             add_shortcut(**context)
             bot.reply_to(message=message, text=f'Shortcut "{message.text}" was successfully saved!')
+            logging.info(f'''{message.from_user.username or message.from_user.id}: added {context['content_type']} shortcut''')
         except Exception as e:
             print_exception(e)
             bot.reply_to(message=message, text=error_msg)
@@ -129,6 +135,7 @@ def process_add_shortcut_name(prev_message):
 
 @bot.message_handler(commands=['list'])
 def list_shortcuts_handler(message):
+    logging.info(f'''{message.from_user.username or message.from_user.id}: list''')
     shortcuts = get_shortcuts(message.from_user.id)
     if shortcuts:
         bot.reply_to(message=message, text=f'You have {len(shortcuts)} in total, here they are:')
@@ -161,11 +168,13 @@ def list_shortcuts_handler(message):
 
 @bot.message_handler(commands=['delete'])
 def delete_shortcut_handler(message):
+    logging.info(f'''{message.from_user.username or message.from_user.id}: delete''')
     shortcuts = get_shortcuts(message.from_user.id)
     if shortcuts:
         kb = tb.types.ReplyKeyboardMarkup(one_time_keyboard=True)
         for i in range(0, len(shortcuts), 2):
             kb.add(*[x.shortcut_name for x in shortcuts[i: i + 2]])
+        kb.add('Cancel')
         msg = bot.reply_to(message=message, text='''Which shortcut do you want to delete?''', reply_markup=kb)
         bot.register_next_step_handler(msg, process_delete_shortcut)
     else:
@@ -176,17 +185,19 @@ def process_delete_shortcut(msg):
     if shortcut:
         delete_shortcut(shortcut.id)
         bot.reply_to(message=msg, text=f'''Shortcut `{shortcut.shortcut_name}` was successfully deleted!''', reply_markup=tb.types.ReplyKeyboardRemove())
+    elif msg.text == 'Cancel':
+        bot.reply_to(message=msg, text='Deletion was cancelled', reply_markup=tb.types.ReplyKeyboardRemove())
     else:
         bot.reply_to(message=msg, text='Please, use the Telegram keyboard')
 
 
 @bot.inline_handler(lambda query: True)
 def query_text(inline_query):
+    logging.info(f'''{inline_query.from_user.username or inline_query.from_user.id}: inline ({inline_query.query})''')
     shortcuts = get_shortcuts(telegram_id=inline_query.from_user.id)
     found_shortcuts = [shortcut for shortcut in shortcuts if inline_query.query in shortcut.shortcut_name] or shortcuts
     results = []
     for i, shortcut in enumerate(found_shortcuts):
-        logging.info(shortcut.content)
         try:        
             r = get_input_content(shortcut)
         except JSONDecodeError as e:
@@ -194,8 +205,36 @@ def query_text(inline_query):
             logging.error(shortcut.content)
             logging.error(format_exc())
         results.append(r)
-    bot.answer_inline_query(inline_query.id, results, cache_time=1, is_personal=True)
+    if not found_shortcuts:
+        results.append(
+            tb.types.InlineQueryResultArticle(
+                id='1',
+                title='Test shortcut',
+                input_message_content=tb.types.InputTextMessageContent(
+                    message_text='This is a test shortcut. It will disappear from your search results when you add your first own shortcut in direct messages of @shortcut_robot.'
+                )
+            )
+        )
+    bot.answer_inline_query(
+        inline_query.id, 
+        results, 
+        cache_time=1, 
+        is_personal=True,
+        switch_pm_parameter='from_menu',
+        switch_pm_text='Add a new shortcut' if found_shortcuts else 'Add your own shortcut'
+    )
 
+@bot.message_handler(commands=['get_users'])
+def admin_get_users(message):
+    if is_admin(message.from_user.id):
+        result = '\n'.join(
+                [f'''`{str(values[0]).split(".")[0]}`: \t ({values[1]}) {("" if user_id[0].isdigit() else "@") + user_id}''' for user_id, values in get_users_list().items()]
+        ).replace('_', '\_')
+        bot.reply_to(
+            message=message, 
+            text=result,
+            parse_mode='markdown'
+        )
 
 if __name__ == '__main__':
     bot.infinity_polling()
