@@ -36,9 +36,9 @@ logging.basicConfig(
     ]
 )
 
-bot = tb.TeleBot(environ.get('TGTOKEN').strip())
+bot = tb.TeleBot(getenv('TGTOKEN').strip())
 
-help_message = f'''Here are methods you can use:
+help_message = '''Here are methods you can use:
 /help - send this message
 /list - list all existing shortcuts
 /add - add a new shortcut
