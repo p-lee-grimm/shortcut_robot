@@ -232,7 +232,7 @@ def query_text(inline_query):
     shortcuts = get_shortcuts(telegram_id=inline_query.from_user.id)
     found_shortcuts = [shortcut for shortcut in shortcuts if inline_query.query in shortcut.shortcut_name] or shortcuts
     results = []
-    for i, shortcut in enumerate(sorted(found_shortcuts, key=lambda shortcut: -shortcut.num_of_uses)):
+    for shortcut in sorted(found_shortcuts, key=lambda shortcut: shortcut.num_of_uses)[::-1]:
         try:        
             r = get_input_content(shortcut)
         except JSONDecodeError as e:
