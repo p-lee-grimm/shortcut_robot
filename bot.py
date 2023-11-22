@@ -69,11 +69,19 @@ def get_input_content(shortcut):
     content_class = get_input_media_by_type(shortcut.content_type)
     params = {
         f'''{shortcut.content_type if shortcut.content_type != 'animation' else 'mpeg4'}_file_id''': shortcut.content, 
+        'parse_mode': '',
         'caption': shortcut.text,
-        'description': shortcut.shortcut_name
+        'description': shortcut.shortcut_name,
+        'caption_entities': tb.types.Message.parse_entities(shortcut.entities or [])
     } if shortcut.content_type not in ('text', 'location') \
-    else {**loads(shortcut.content)} if shortcut.content_type == 'location' \
-    else {'input_message_content': tb.types.InputTextMessageContent(shortcut.text)}
+        else {**loads(shortcut.content)} if shortcut.content_type == 'location' \
+        else {
+            'input_message_content': tb.types.InputTextMessageContent(
+                shortcut.text, 
+                entities=tb.types.Message.parse_entities(shortcut.entities or []),
+                parse_mode=''
+            )
+        }
     params['id'] = shortcut.id
     params['title'] = shortcut.shortcut_name
     
@@ -96,12 +104,13 @@ def handle_add_shortcut(message):
     logging.info(f'''{message.from_user.username or message.from_user.id}: add''')
     msg = bot.reply_to(
         message=message, 
-        text='''Send me any one message you want. It can be a text and/or one of the following media types audio, document, video, voice message, location or poll. E.g. you can send me your __business__ card like this one:
+        text='''Send me any one message you want\. It can be a text and/or one of the following media types audio, document, video, voice message, location or poll\. Also, you can use formatting styles in your shortcuts: _italic_, *bold*, __underlined__, ~striked~, `code` and [links](https://core\.telegram\.org/api/entities)\.
+To begin with, *you* can send me your _business_ card like this one:
 ```Name: Shortcut Holder
 Position: Telegram Bot
 Company: Shortcut Holder LLC
-Email: i@t010rd.ru```''',
-        parse_mode='markdown'
+Email: i@t010rd\.ru```''',
+        parse_mode='MarkdownV2'
     )
     bot.register_next_step_handler(msg, process_add_shortcut_content)
 
@@ -119,7 +128,8 @@ def process_add_shortcut_name(prev_message):
         'content_type': prev_message.content_type,
         'content': get_first_or_obj(getattr(prev_message, prev_message.content_type)).file_id if prev_message.content_type not in ('text', 'location') \
                     else prev_message.location.to_json() if prev_message.content_type == 'location' \
-                    else None
+                    else None,
+        'entities': [x.to_json() for x in prev_message.entities or []]
     }
     def inner(message):
         try:
@@ -140,9 +150,14 @@ def list_shortcuts_handler(message):
     if shortcuts:
         bot.reply_to(message=message, text=f'You have {len(shortcuts)} in total, here they are:')
         for i, shortcut in enumerate(shortcuts, start=1):
-            prev_message = bot.send_message(chat_id=message.from_user.id, text=f'{i}. `{shortcut.shortcut_name}`:', parse_mode='markdown')
+            prev_message = bot.send_message(chat_id=message.from_user.id, text=f'{i}. `{shortcut.shortcut_name}`:', parse_mode='Markdown')
             if shortcut.content_type == 'text':
-                bot.reply_to(message=prev_message, text=shortcut.text)
+                bot.reply_to(
+                    message=prev_message, 
+                    text=shortcut.text, 
+                    parse_mode='', 
+                    entities=prev_message.parse_entities(shortcut.entities or [])
+                )
             elif shortcut.content_type == 'location':
                 try:
                     bot.send_location(
@@ -160,7 +175,9 @@ def list_shortcuts_handler(message):
                         shortcut.content_type: shortcut.content, 
                         'caption': shortcut.text, 
                         'reply_to_message_id': prev_message.id,
-                        'chat_id': message.from_user.id
+                        'chat_id': message.from_user.id,
+                        'caption_entities': message.parse_entities(shortcut.entities or []),
+                        'parse_mode': ''
                     }
                 )
     else:
@@ -173,7 +190,7 @@ def delete_shortcut_handler(message):
     if shortcuts:
         kb = tb.types.ReplyKeyboardMarkup(one_time_keyboard=True)
         for i in range(0, len(shortcuts), 2):
-            kb.add(*[x.shortcut_name for x in shortcuts[i: i + 2]])
+            kb.add(*[f'"{x.shortcut_name}"' for x in shortcuts[i: i + 2]])
         kb.add('Cancel')
         msg = bot.reply_to(message=message, text='''Which shortcut do you want to delete?''', reply_markup=kb)
         bot.register_next_step_handler(msg, process_delete_shortcut)
@@ -181,7 +198,7 @@ def delete_shortcut_handler(message):
         bot.reply_to(message=message, text='''You don't have any shortcuts, but you can simply add one by clicking here: /add''')
 
 def process_delete_shortcut(msg):
-    shortcut = get_shortcut(telegram_id=msg.from_user.id, shortcut_name=msg.text)
+    shortcut = get_shortcut(telegram_id=msg.from_user.id, shortcut_name=msg.text[1:-1])
     if shortcut:
         delete_shortcut(shortcut.id)
         bot.reply_to(message=msg, text=f'''Shortcut `{shortcut.shortcut_name}` was successfully deleted!''', reply_markup=tb.types.ReplyKeyboardRemove())

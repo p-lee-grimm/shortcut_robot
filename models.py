@@ -1,10 +1,8 @@
-from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, DateTime, func
+from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, DateTime, func, JSON
 from sqlalchemy.orm import sessionmaker, relationship, declarative_base
 from dotenv import load_dotenv
 from datetime import datetime as dt
 from os import getenv
-
-# Замените следующие строки на реальные данные вашего подключения к PostgreSQL
 
 load_dotenv()
 
@@ -35,6 +33,7 @@ class Shortcut(Base):
     content = Column(String, nullable=True)
     add_dt = Column(DateTime, nullable=False)
     update_dt = Column(DateTime, nullable=False)
+    entities = Column(JSON, nullable=True)
     user = relationship('User', back_populates='shortcuts')
 
     def __repr__(self):
@@ -64,7 +63,7 @@ def get_user(telegram_id: int):
         user = session.query(User).filter_by(telegram_id=telegram_id).first()
         return user
 
-def add_shortcut(shortcut_name: str, telegram_id: int, content_type: str, text: str, content: str):
+def add_shortcut(shortcut_name: str, telegram_id: int, content_type: str, text: str, content: str, entities: list=None):
     with Session() as session:
         shortcut = Shortcut(
             shortcut_name=shortcut_name, 
@@ -73,7 +72,8 @@ def add_shortcut(shortcut_name: str, telegram_id: int, content_type: str, text: 
             text=text,
             content=content,
             add_dt=dt.now(),
-            update_dt=dt.now()
+            update_dt=dt.now(),
+            entities=entities or []
         )
         session.add(shortcut)
         session.commit()
