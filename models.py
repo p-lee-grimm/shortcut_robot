@@ -34,6 +34,8 @@ class Shortcut(Base):
     add_dt = Column(DateTime, nullable=False)
     update_dt = Column(DateTime, nullable=False)
     entities = Column(JSON, nullable=True)
+    num_of_uses = Column(Integer, default=0)
+    last_use_dt = Column(DateTime, nullable=True)
     user = relationship('User', back_populates='shortcuts')
 
     def __repr__(self):
@@ -113,6 +115,7 @@ def get_users_list() -> dict:
                 User.telegram_id,
                 User.registration_dt,
                 User.username,
+                User.start_param,
                 func.count(
                     Shortcut.id.distinct()
                 ).label(
@@ -123,12 +126,22 @@ def get_users_list() -> dict:
             ).group_by(
                 User.telegram_id, 
                 User.registration_dt, 
-                User.username
+                User.username,
+                User.start_param
             ).order_by(
                 User.registration_dt
             )
         )
-        return {user.username or str(user.telegram_id): (user.registration_dt, user.num_shortcuts) for user in users}
+        return {user.username or str(user.telegram_id): (user.registration_dt, user.num_shortcuts, user.start_param) for user in users}
+
+def increase_chosen_result_counter(shortcut_id: int):
+    with Session() as session:
+        shortcut = session.query(Shortcut).filter_by(id=shortcut_id).first()
+        if shortcut:
+            shortcut.num_of_uses += 1
+            shortcut.last_use_dt = dt.now()
+            session.commit()
+    
 
 def is_admin(telegram_id: int) -> bool:
     with Session() as session:
