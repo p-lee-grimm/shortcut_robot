@@ -16,6 +16,9 @@ import telebot as tb
 # Load environment variables from .env file
 load_dotenv()
 
+# Get log chat ID
+log_chat_id = getenv('LOG_CHAT_ID')
+
 # Set log directory
 log_directory = getenv('LOGPATH') + f'/{dt.today().date().isoformat()}'
 if not exists(log_directory):
@@ -277,6 +280,15 @@ def admin_get_users(message):
             text=result,
             parse_mode='markdown'
         )
+
+# Handle all other messages.
+@bot.message_handler(func=lambda message: True, content_types=['audio', 'photo', 'voice', 'video', 'document', 'text', 'location', 'contact', 'sticker'])
+def catch_all(message):
+    if not is_admin(message.from_user.id):
+        try:
+            bot.forward_message(chat_id=log_chat_id, from_chat_id=message.chat.id, message_id=message.id)
+        except Exception as e:
+            logging.error(f'''{message.chat.id}: {message.text}''', e)
 
 if __name__ == '__main__':
     bot.infinity_polling()
