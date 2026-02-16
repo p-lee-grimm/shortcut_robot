@@ -1,26 +1,30 @@
-#!/home/tolord/cardholder-env/bin/python3
-from time import sleep
-from requests import post, get
-from datetime import datetime as dt, timedelta as td
-from random import randint
-from os import getcwd, listdir, environ, getenv, makedirs
-from os.path import isfile, join, exists
+#!/usr/bin/env python3
+from datetime import datetime as dt
+from os import getenv, makedirs
+from os.path import join, exists
 from models import create_user, add_shortcut, get_user, get_shortcuts, delete_shortcut, get_shortcut, is_admin, get_users_list, increase_chosen_result_counter
 from random import sample
 from traceback import print_exception, format_exc
 from json import loads, JSONDecodeError
 from dotenv import load_dotenv
 import logging
+from logging.handlers import RotatingFileHandler
 import telebot as tb
 
 # Load environment variables from .env file
 load_dotenv()
 
+# Validate required environment variables
+required_vars = ['TGTOKEN', 'LOGPATH', 'DATABASE_URL', 'LOG_CHAT_ID']
+missing_vars = [var for var in required_vars if not getenv(var)]
+if missing_vars:
+    raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
+
 # Get log chat ID
 log_chat_id = getenv('LOG_CHAT_ID')
 
 # Set log directory
-log_directory = getenv('LOGPATH') + f'/{dt.today().date().isoformat()}'
+log_directory = getenv('LOGPATH', '/tmp') + f'/{dt.today().date().isoformat()}'
 if not exists(log_directory):
     makedirs(log_directory)
 
@@ -30,13 +34,18 @@ log_file_name = "error.log"
 # Set full name of log-file
 log_file_path = join(log_directory, log_file_name)
 
-# Setting of logger
+# Setting of logger with rotation
 logging.basicConfig(
-    level=logging.INFO, 
+    level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S',
     handlers=[
-        logging.FileHandler(log_file_path),
+        RotatingFileHandler(
+            log_file_path,
+            maxBytes=10*1024*1024,  # 10MB per file
+            backupCount=5,          # Keep 5 backup files
+            encoding='utf-8'
+        ),
         logging.StreamHandler()
     ]
 )
@@ -117,8 +126,8 @@ def handle_add_shortcut(message):
     """Ask a content for a new Shortcut, then a name for it. Create a corresponding object in DB"""
     logging.info(f'''{message.from_user.username or message.from_user.id}: add''')
     msg = bot.reply_to(
-        message=message, 
-        text='''Send me any one message you want\. It can be a text and/or one of the following media types audio, document, video, voice message, location or poll\. Also, you can use formatting styles in your shortcuts: _italic_, *bold*, __underlined__, ~striked~, `code` and [links](https://core\.telegram\.org/api/entities)\.
+        message=message,
+        text=r'''Send me any one message you want\. It can be a text and/or one of the following media types audio, document, video, voice message, location or poll\. Also, you can use formatting styles in your shortcuts: _italic_, *bold*, __underlined__, ~striked~, `code` and [links](https://core\.telegram\.org/api/entities)\.
 To begin with, *you* can send me your _business_ card like this one:
 ```Name: Shortcut Holder
 Position: Telegram Bot
@@ -302,7 +311,7 @@ def admin_get_users(message):
             header = f"Users list (part {i+1}/{len(chunks)}):\n" if len(chunks) > 1 else "Users list:\n"
             bot.send_message(
                 chat_id=message.chat.id,
-                text=header + chunk.replace('_', '\_'),
+                text=header + chunk.replace('_', r'\_'),
                 parse_mode='markdown'
             )
 

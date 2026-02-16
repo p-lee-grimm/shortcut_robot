@@ -6,7 +6,20 @@ from os import getenv
 
 load_dotenv()
 
-engine = create_engine(getenv('DATABASE_URL'))
+# Validate DATABASE_URL exists
+DATABASE_URL = getenv('DATABASE_URL')
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL environment variable is required")
+
+# Create engine with connection pooling
+engine = create_engine(
+    DATABASE_URL,
+    pool_size=20,           # Maximum number of permanent connections
+    max_overflow=10,        # Maximum number of temporary connections
+    pool_pre_ping=True,     # Verify connections before using
+    pool_recycle=3600,      # Recycle connections after 1 hour
+    echo=False              # Set to True for SQL debugging
+)
 Session = sessionmaker(bind=engine)
 Base = declarative_base()
 
