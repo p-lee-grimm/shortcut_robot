@@ -1,0 +1,12 @@
+# Core dependencies for Shortcut Robot Telegram Bot
+pyTelegramBotAPI==4.27.0
+SQLAlchemy==2.0.35
+python-dotenv==1.0.1
+psycopg2-binary==2.9.10
+
+# Optional: For development and testing
+# pytest==8.0.0
+# pytest-cov==4.1.0
+# mypy==1.8.0
+# black==24.1.0
+# flake8==7.0.0

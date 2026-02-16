@@ -1,5 +1,74 @@
-__pycache__/
-*.pyc
-*.pyo
+# Environment variables and secrets
 .env
+.env.local
+.env.*.local
+*.pem
+*.key
+.token
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb
+
+# Logs
+logs/
 *.log
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+dump.sql
+*.sql
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# Project specific
+shortcut_robot.sqlite
+migrate_schema.sql
+cleanup_duplicates*.sql
+pgloader-instructions.txt
