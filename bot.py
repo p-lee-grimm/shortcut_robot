@@ -108,7 +108,7 @@ def send_welcome(message):
     else:
         params = message.text.split(maxsplit=1)
         start_param = params[1] if len(params) > 1 else None
-        create_user(telegram_id=message.from_user.id, username=message.from_user.username, start_param=start_param)
+        create_user(telegram_user_id=message.from_user.id, username=message.from_user.username, start_param=start_param)
         bot.reply_to(message=message, text=f'''Hi, {message.from_user.first_name} {message.from_user.last_name}! I'm Shortcut Holder, and I will help you to quickly send any frequently used information (I call it Shortcut) to whoever you want very easy. I'll show you how to do it real quick. Just click here right now: /add''')
 
 
@@ -218,7 +218,7 @@ def delete_shortcut_handler(message):
 
 def process_delete_shortcut(msg):
     """Delete chosen Shortcut or cancel if 'Cancel' option was chosed"""
-    shortcut = get_shortcut(telegram_id=msg.from_user.id, shortcut_name=msg.text[1:-1])
+    shortcut = get_shortcut(telegram_user_id=msg.from_user.id, shortcut_name=msg.text[1:-1])
     if shortcut:
         delete_shortcut(shortcut.id)
         bot.reply_to(message=msg, text=f'''Shortcut `{shortcut.shortcut_name}` was successfully deleted!''', reply_markup=tb.types.ReplyKeyboardRemove())
@@ -232,7 +232,7 @@ def process_delete_shortcut(msg):
 def query_text(inline_query):
     """List all shortcuts filtered by text and sorted by use"""
     logging.info(f'''{inline_query.from_user.username or inline_query.from_user.id}: inline ({inline_query.query})''')
-    shortcuts = get_shortcuts(telegram_id=inline_query.from_user.id)
+    shortcuts = get_shortcuts(telegram_user_id=inline_query.from_user.id)
     found_shortcuts = [shortcut for shortcut in shortcuts if inline_query.query in shortcut.shortcut_name] or shortcuts
     results = []
     for shortcut in sorted(found_shortcuts, key=lambda shortcut: shortcut.num_of_uses)[::-1]:
@@ -272,14 +272,37 @@ def handle_chosen_shortcut(chosen_result):
 def admin_get_users(message):
     """List all the users with reg dates, # of saved shortcuts and source of registration (only for admins)"""
     if is_admin(message.from_user.id):
-        result = '\n'.join(
-                [f'''`{str(values[0]).split(".")[0]}`: \t ({values[1]}) {("" if user_id[0].isdigit() else "@") + user_id} [{values[2] or ''}]''' for user_id, values in get_users_list().items()]
-        ).replace('_', '\_')
-        bot.reply_to(
-            message=message, 
-            text=result,
-            parse_mode='markdown'
-        )
+        users_data = get_users_list()
+        lines = [f'''`{str(values[0]).split(".")[0]}`: \t ({values[1]}) {("" if user_id[0].isdigit() else "@") + user_id} [{values[2] or ''}]'''
+                 for user_id, values in users_data.items()]
+
+        # Split into chunks to avoid Telegram's 4096 character limit
+        MAX_LENGTH = 3800  # Leave some margin
+        current_chunk = []
+        current_length = 0
+        chunks = []
+
+        for line in lines:
+            line_length = len(line) + 1  # +1 for newline
+            if current_length + line_length > MAX_LENGTH:
+                chunks.append('\n'.join(current_chunk))
+                current_chunk = [line]
+                current_length = line_length
+            else:
+                current_chunk.append(line)
+                current_length += line_length
+
+        if current_chunk:
+            chunks.append('\n'.join(current_chunk))
+
+        # Send chunks
+        for i, chunk in enumerate(chunks):
+            header = f"Users list (part {i+1}/{len(chunks)}):\n" if len(chunks) > 1 else "Users list:\n"
+            bot.send_message(
+                chat_id=message.chat.id,
+                text=header + chunk.replace('_', '\_'),
+                parse_mode='markdown'
+            )
 
 # Handle all other messages.
 @bot.message_handler(func=lambda message: True, content_types=['audio', 'photo', 'voice', 'video', 'document', 'text', 'location', 'contact', 'sticker'])
@@ -291,4 +314,7 @@ def catch_all(message):
             logging.error(f'''{message.chat.id}: {message.text}''', e)
 
 if __name__ == '__main__':
-    bot.infinity_polling()
+    logging.info("Starting bot polling...")
+    logging.info(f"Bot username: @shortcut_robot")
+    logging.info(f"Inline mode enabled: True")
+    bot.infinity_polling(allowed_updates=['message', 'inline_query', 'chosen_inline_result'])

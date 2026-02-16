@@ -13,19 +13,19 @@ Base = declarative_base()
 class User(Base):
     __tablename__ = 'users'
 
-    telegram_id = Column(Integer, nullable=False, unique=True, primary_key=True)
-    username = Column(String, unique=True, nullable=False)
-    registration_dt = Column(DateTime, nullable=False)
+    telegram_user_id = Column(Integer, nullable=False, unique=True, primary_key=True)
+    username = Column(String, unique=False, nullable=True)
+    created_at = Column(DateTime, nullable=True)
     shortcuts = relationship('Shortcut', back_populates='user')
     start_param = Column(String, nullable=True)
 
     def __repr__(self):
-        return f"<User(username='{self.username}', telegram_id='{self.telegram_id}')>"
+        return f"<User(username='{self.username}', telegram_user_id='{self.telegram_user_id}')>"
 
 class Shortcut(Base):
     __tablename__ = 'shortcuts'
 
-    telegram_id = Column(Integer, ForeignKey('users.telegram_id'), nullable=False)
+    telegram_user_id = Column(Integer, ForeignKey('users.telegram_user_id'), nullable=False)
     id = Column(Integer, primary_key=True)
     shortcut_name = Column(String, index=True, nullable=False)
     content_type = Column(String, nullable=False)
@@ -43,33 +43,33 @@ class Shortcut(Base):
 
 class Admin(Base):
     __tablename__ = 'admins'
-    
-    telegram_id = Column(Integer, nullable=False, primary_key=True)
+
+    telegram_user_id = Column(Integer, nullable=False, primary_key=True)
 
     def __repr__(self):
-        return f"<Admin(telegram_id='{self.telegram_id}')>"
+        return f"<Admin(telegram_user_id='{self.telegram_user_id}')>"
 
 # Создать все таблицы
 Base.metadata.create_all(engine)
 
 # Функции для взаимодействия с базой данных
 
-def create_user(telegram_id: int, username: str, start_param: str=None):
+def create_user(telegram_user_id: int, username: str, start_param: str=None):
     with Session() as session:
-        user = User(username=username, telegram_id=telegram_id, registration_dt=dt.now(), start_param=start_param)
+        user = User(username=username, telegram_user_id=telegram_user_id, created_at=dt.now(), start_param=start_param)
         session.add(user)
         session.commit()
 
-def get_user(telegram_id: int):
+def get_user(telegram_user_id: int):
     with Session() as session:
-        user = session.query(User).filter_by(telegram_id=telegram_id).first()
+        user = session.query(User).filter_by(telegram_user_id=telegram_user_id).first()
         return user
 
-def add_shortcut(shortcut_name: str, telegram_id: int, content_type: str, text: str, content: str, entities: list=None):
+def add_shortcut(shortcut_name: str, telegram_user_id: int, content_type: str, text: str, content: str, entities: list=None):
     with Session() as session:
         shortcut = Shortcut(
             shortcut_name=shortcut_name, 
-            telegram_id=telegram_id,
+            telegram_user_id=telegram_user_id,
             content_type=content_type,
             text=text,
             content=content,
@@ -80,18 +80,18 @@ def add_shortcut(shortcut_name: str, telegram_id: int, content_type: str, text: 
         session.add(shortcut)
         session.commit()
 
-def get_shortcuts(telegram_id):
+def get_shortcuts(telegram_user_id):
     with Session() as session:
-        user = session.query(User).filter_by(telegram_id=telegram_id).first()
+        user = session.query(User).filter_by(telegram_user_id=telegram_user_id).first()
         shortcuts = user.shortcuts if user else []
         return shortcuts
 
-def get_shortcut(telegram_id, shortcut_name):
+def get_shortcut(telegram_user_id, shortcut_name):
     with Session() as session:
-        shortcut = session.query(Shortcut).filter_by(telegram_id=telegram_id, shortcut_name=shortcut_name).first()
+        shortcut = session.query(Shortcut).filter_by(telegram_user_id=telegram_user_id, shortcut_name=shortcut_name).first()
         return shortcut
 
-def update_shortcut(shortcut_id: int, new_shortcut_name: str, telegram_id: int, new_content_type: str, new_text: str, new_content: str):
+def update_shortcut(shortcut_id: int, new_shortcut_name: str, telegram_user_id: int, new_content_type: str, new_text: str, new_content: str):
     with Session() as session:
         shortcut = session.query(Shortcut).filter_by(id=shortcut_id).first()
         if shortcut:
@@ -112,8 +112,8 @@ def get_users_list() -> dict:
     with Session() as session:
         users = (
             session.query(
-                User.telegram_id,
-                User.registration_dt,
+                User.telegram_user_id,
+                User.created_at,
                 User.username,
                 User.start_param,
                 func.count(
@@ -124,15 +124,15 @@ def get_users_list() -> dict:
             ).outerjoin(
                 Shortcut
             ).group_by(
-                User.telegram_id, 
-                User.registration_dt, 
+                User.telegram_user_id, 
+                User.created_at, 
                 User.username,
                 User.start_param
             ).order_by(
-                User.registration_dt
+                User.created_at
             )
         )
-        return {user.username or str(user.telegram_id): (user.registration_dt, user.num_shortcuts, user.start_param) for user in users}
+        return {user.username or str(user.telegram_user_id): (user.created_at, user.num_shortcuts, user.start_param) for user in users}
 
 def increase_chosen_result_counter(shortcut_id: int):
     with Session() as session:
@@ -143,7 +143,7 @@ def increase_chosen_result_counter(shortcut_id: int):
             session.commit()
     
 
-def is_admin(telegram_id: int) -> bool:
+def is_admin(telegram_user_id: int) -> bool:
     with Session() as session:
-        admin = session.query(Admin).filter_by(telegram_id=telegram_id).first()
+        admin = session.query(Admin).filter_by(telegram_user_id=telegram_user_id).first()
         return admin is not None
