@@ -63,6 +63,9 @@ def create_user(telegram_user_id: int, username: str, start_param: str=None):
 def get_user(telegram_user_id: int):
     with Session() as session:
         user = session.query(User).filter_by(telegram_user_id=telegram_user_id).first()
+        if user:
+            # Detach from session to avoid lazy-loading issues
+            session.expunge(user)
         return user
 
 def add_shortcut(shortcut_name: str, telegram_user_id: int, content_type: str, text: str, content: str, entities: list=None):
@@ -82,13 +85,23 @@ def add_shortcut(shortcut_name: str, telegram_user_id: int, content_type: str, t
 
 def get_shortcuts(telegram_user_id):
     with Session() as session:
-        user = session.query(User).filter_by(telegram_user_id=telegram_user_id).first()
-        shortcuts = user.shortcuts if user else []
+        # Query shortcuts directly instead of via user relationship
+        shortcuts = session.query(Shortcut).filter_by(
+            telegram_user_id=telegram_user_id
+        ).all()
+        # Detach all shortcuts from session before returning
+        for shortcut in shortcuts:
+            session.expunge(shortcut)
         return shortcuts
 
 def get_shortcut(telegram_user_id, shortcut_name):
     with Session() as session:
-        shortcut = session.query(Shortcut).filter_by(telegram_user_id=telegram_user_id, shortcut_name=shortcut_name).first()
+        shortcut = session.query(Shortcut).filter_by(
+            telegram_user_id=telegram_user_id,
+            shortcut_name=shortcut_name
+        ).first()
+        if shortcut:
+            session.expunge(shortcut)
         return shortcut
 
 def update_shortcut(shortcut_id: int, new_shortcut_name: str, telegram_user_id: int, new_content_type: str, new_text: str, new_content: str):

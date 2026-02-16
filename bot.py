@@ -150,7 +150,7 @@ def process_add_shortcut_name(prev_message):
     def inner(message):
         """Save a Shortcut to BD"""
         try:
-            context['telegram_id'] = message.from_user.id
+            context['telegram_user_id'] = message.from_user.id
             context['shortcut_name'] = message.text
             add_shortcut(**context)
             bot.reply_to(message=message, text=f'Shortcut "{message.text}" was successfully saved!')
@@ -236,13 +236,15 @@ def query_text(inline_query):
     found_shortcuts = [shortcut for shortcut in shortcuts if inline_query.query in shortcut.shortcut_name] or shortcuts
     results = []
     for shortcut in sorted(found_shortcuts, key=lambda shortcut: shortcut.num_of_uses)[::-1]:
-        try:        
+        try:
             r = get_input_content(shortcut)
+            results.append(r)
         except JSONDecodeError as e:
-            logging.error(shortcut.content_type)
-            logging.error(shortcut.content)
+            logging.error(f"Failed to process shortcut {shortcut.id}: {shortcut.content_type}")
+            logging.error(f"Content: {shortcut.content}")
             logging.error(format_exc())
-        results.append(r)
+            # Skip this broken shortcut
+            continue
     if not found_shortcuts:
         results.append(
             tb.types.InlineQueryResultArticle(
