@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 from datetime import datetime as dt
 from os import getenv, makedirs
-from os.path import join, exists
+from os.path import join
 from models import create_user, add_shortcut, get_user, get_shortcuts, delete_shortcut, get_shortcut, is_admin, get_users_list, increase_chosen_result_counter
-from random import sample
-from traceback import print_exception, format_exc
+from random import choice
+from traceback import format_exc
 from json import loads, JSONDecodeError
 from dotenv import load_dotenv
 import logging
@@ -25,8 +25,7 @@ log_chat_id = getenv('LOG_CHAT_ID')
 
 # Set log directory
 log_directory = getenv('LOGPATH', '/tmp') + f'/{dt.today().date().isoformat()}'
-if not exists(log_directory):
-    makedirs(log_directory)
+makedirs(log_directory, exist_ok=True)
 
 # Set name of log-file
 log_file_name = "error.log"
@@ -61,13 +60,15 @@ help_message = '''Here are methods you can use:
 Send any feedback (questions, feature requests) to @tolord'''
 
 error_msg = 'Sorry, something went wrong. If you see this message, text to my creator please: @tolord'
+no_shortcuts_msg = "You don't have any shortcuts, but you can simply add one by clicking here: /add"
+
+def _parse_entities(entities):
+    """Deserialize stored entity dicts to MessageEntity objects."""
+    return [tb.types.MessageEntity.de_json(e) for e in (entities or [])]
 
 def get_first_or_obj(obj):
-    """Returns first element of an object if it is a collection else the same object"""
-    try:
-        return obj[0]
-    except Exception:
-        return obj
+    """Returns first element if obj is a list, otherwise returns obj as-is."""
+    return obj[0] if isinstance(obj, list) else obj
 
 def get_input_media_by_type(type_name: str) -> tb.types.InputMedia:
     """Gets a name of a media type, returns corresponding Telegram Object Class"""
@@ -84,28 +85,30 @@ def get_input_media_by_type(type_name: str) -> tb.types.InputMedia:
 def get_input_content(shortcut):
     """Creates Telegram Object by Shortcut description"""
     content_class = get_input_media_by_type(shortcut.content_type)
+    if content_class is None:
+        raise ValueError(f"Unsupported content type: {shortcut.content_type}")
 
     if shortcut.content_type not in ('text', 'location'):
         params = {
-            f'''{shortcut.content_type if shortcut.content_type != 'animation' else 'mpeg4'}_file_id''': shortcut.content, 
+            f'''{shortcut.content_type if shortcut.content_type != 'animation' else 'mpeg4'}_file_id''': shortcut.content,
             'parse_mode': '',
             'caption': shortcut.text,
             'description': shortcut.shortcut_name,
-            'caption_entities': tb.types.Message.parse_entities(shortcut.entities or [])
+            'caption_entities': _parse_entities(shortcut.entities)
         }
     elif shortcut.content_type == 'location':
         params = {**loads(shortcut.content)}
     else:
         params = {
             'input_message_content': tb.types.InputTextMessageContent(
-                shortcut.text, 
-                entities=tb.types.Message.parse_entities(shortcut.entities or []),
+                shortcut.text,
+                entities=_parse_entities(shortcut.entities),
                 parse_mode=''
             )
         }
     params['id'] = shortcut.id
     params['title'] = shortcut.shortcut_name
-    
+
     return content_class(**params)
 
 @bot.message_handler(commands=['start', 'help'])
@@ -118,7 +121,8 @@ def send_welcome(message):
         params = message.text.split(maxsplit=1)
         start_param = params[1] if len(params) > 1 else None
         create_user(telegram_user_id=message.from_user.id, username=message.from_user.username, start_param=start_param)
-        bot.reply_to(message=message, text=f'''Hi, {message.from_user.first_name} {message.from_user.last_name}! I'm Shortcut Holder, and I will help you to quickly send any frequently used information (I call it Shortcut) to whoever you want very easy. I'll show you how to do it real quick. Just click here right now: /add''')
+        name = ' '.join(filter(None, [message.from_user.first_name, message.from_user.last_name]))
+        bot.reply_to(message=message, text=f'''Hi, {name}! I'm Shortcut Holder, and I will help you to quickly send any frequently used information (I call it Shortcut) to whoever you want very easy. I'll show you how to do it real quick. Just click here right now: /add''')
 
 
 @bot.message_handler(commands=['add'])
@@ -140,10 +144,10 @@ Email: i@t010rd\.ru```''',
 def process_add_shortcut_content(message):
     """Ask for a name for a new shortcut"""
     try:
-        msg = bot.reply_to(message, f'''{sample(['Great', 'Magnificent', 'Fantastic', 'Wonderful'], k=1)[0]}! Now give me a short name for your shortcut:''')
+        msg = bot.reply_to(message, f'''{choice(['Great', 'Magnificent', 'Fantastic', 'Wonderful'])}! Now give me a short name for your shortcut:''')
         bot.register_next_step_handler(msg, process_add_shortcut_name(message))
     except Exception as e:
-        print_exception(e)
+        logging.exception(e)
         bot.reply_to(message=message, text=error_msg)
 
 def process_add_shortcut_name(prev_message):
@@ -154,7 +158,7 @@ def process_add_shortcut_name(prev_message):
         'content': get_first_or_obj(getattr(prev_message, prev_message.content_type)).file_id if prev_message.content_type not in ('text', 'location') \
                     else prev_message.location.to_json() if prev_message.content_type == 'location' \
                     else None,
-        'entities': [x.to_json() for x in prev_message.entities or []]
+        'entities': [loads(x.to_json()) for x in prev_message.entities or []]
     }
     def inner(message):
         """Save a Shortcut to BD"""
@@ -165,7 +169,7 @@ def process_add_shortcut_name(prev_message):
             bot.reply_to(message=message, text=f'Shortcut "{message.text}" was successfully saved!')
             logging.info(f'''{message.from_user.username or message.from_user.id}: added {context['content_type']} shortcut''')
         except Exception as e:
-            print_exception(e)
+            logging.exception(e)
             bot.reply_to(message=message, text=error_msg)
     return inner
 
@@ -175,15 +179,15 @@ def list_shortcuts_handler(message):
     logging.info(f'''{message.from_user.username or message.from_user.id}: list''')
     shortcuts = get_shortcuts(message.from_user.id)
     if shortcuts:
-        bot.reply_to(message=message, text=f'You have {len(shortcuts)} in total, here they are:')
+        bot.reply_to(message=message, text=f'You have {len(shortcuts)} shortcuts in total, here they are:')
         for i, shortcut in enumerate(shortcuts, start=1):
             prev_message = bot.send_message(chat_id=message.from_user.id, text=f'{i}. `{shortcut.shortcut_name}`:', parse_mode='Markdown')
             if shortcut.content_type == 'text':
                 bot.reply_to(
-                    message=prev_message, 
-                    text=shortcut.text, 
-                    parse_mode='', 
-                    entities=prev_message.parse_entities(shortcut.entities or [])
+                    message=prev_message,
+                    text=shortcut.text,
+                    parse_mode='',
+                    entities=_parse_entities(shortcut.entities)
                 )
             elif shortcut.content_type == 'location':
                 try:
@@ -192,10 +196,11 @@ def list_shortcuts_handler(message):
                         chat_id=message.from_user.id,
                         **loads(shortcut.content)
                     )
-                except JSONDecodeError as e:
-                    logging.error(shortcut.content_type)
-                    logging.error(shortcut.content)
-                    logging.error(format_exc(), exc_info=True)
+                except JSONDecodeError:
+                    logging.error(
+                        "Failed to parse location for shortcut type=%s content=%s\n%s",
+                        shortcut.content_type, shortcut.content, format_exc()
+                    )
             else:
                 getattr(bot, f'send_{shortcut.content_type}')(
                     **{
@@ -203,12 +208,12 @@ def list_shortcuts_handler(message):
                         'caption': shortcut.text, 
                         'reply_to_message_id': prev_message.id,
                         'chat_id': message.from_user.id,
-                        'caption_entities': message.parse_entities(shortcut.entities or []),
+                        'caption_entities': _parse_entities(shortcut.entities),
                         'parse_mode': ''
                     }
                 )
     else:
-        bot.reply_to(message=message, text='''You don't have any shortcuts, but you can simply add one by clicking here: /add''')
+        bot.reply_to(message=message, text=no_shortcuts_msg)
 
 @bot.message_handler(commands=['delete'])
 def delete_shortcut_handler(message):
@@ -223,18 +228,22 @@ def delete_shortcut_handler(message):
         msg = bot.reply_to(message=message, text='''Which shortcut do you want to delete?''', reply_markup=kb)
         bot.register_next_step_handler(msg, process_delete_shortcut)
     else:
-        bot.reply_to(message=message, text='''You don't have any shortcuts, but you can simply add one by clicking here: /add''')
+        bot.reply_to(message=message, text=no_shortcuts_msg)
 
 def process_delete_shortcut(msg):
-    """Delete chosen Shortcut or cancel if 'Cancel' option was chosed"""
+    """Delete chosen Shortcut or cancel if 'Cancel' option was chosen"""
+    if not msg.text:
+        bot.reply_to(message=msg, text='Please, use the Telegram keyboard', reply_markup=tb.types.ReplyKeyboardRemove())
+        return
+    if msg.text == 'Cancel':
+        bot.reply_to(message=msg, text='Deletion was cancelled', reply_markup=tb.types.ReplyKeyboardRemove())
+        return
     shortcut = get_shortcut(telegram_user_id=msg.from_user.id, shortcut_name=msg.text[1:-1])
     if shortcut:
         delete_shortcut(shortcut.id)
-        bot.reply_to(message=msg, text=f'''Shortcut `{shortcut.shortcut_name}` was successfully deleted!''', reply_markup=tb.types.ReplyKeyboardRemove())
-    elif msg.text == 'Cancel':
-        bot.reply_to(message=msg, text='Deletion was cancelled', reply_markup=tb.types.ReplyKeyboardRemove())
+        bot.reply_to(message=msg, text=f'Shortcut `{shortcut.shortcut_name}` was successfully deleted!', parse_mode='Markdown', reply_markup=tb.types.ReplyKeyboardRemove())
     else:
-        bot.reply_to(message=msg, text='Please, use the Telegram keyboard')
+        bot.reply_to(message=msg, text='Please, use the Telegram keyboard', reply_markup=tb.types.ReplyKeyboardRemove())
 
 
 @bot.inline_handler(lambda query: True)
@@ -244,11 +253,11 @@ def query_text(inline_query):
     shortcuts = get_shortcuts(telegram_user_id=inline_query.from_user.id)
     found_shortcuts = [shortcut for shortcut in shortcuts if inline_query.query in shortcut.shortcut_name] or shortcuts
     results = []
-    for shortcut in sorted(found_shortcuts, key=lambda shortcut: shortcut.num_of_uses)[::-1]:
+    for shortcut in sorted(found_shortcuts, key=lambda shortcut: shortcut.num_of_uses, reverse=True):
         try:
             r = get_input_content(shortcut)
             results.append(r)
-        except JSONDecodeError as e:
+        except (JSONDecodeError, ValueError) as e:
             logging.error(f"Failed to process shortcut {shortcut.id}: {shortcut.content_type}")
             logging.error(f"Content: {shortcut.content}")
             logging.error(format_exc())
@@ -284,7 +293,7 @@ def admin_get_users(message):
     """List all the users with reg dates, # of saved shortcuts and source of registration (only for admins)"""
     if is_admin(message.from_user.id):
         users_data = get_users_list()
-        lines = [f'''`{str(values[0]).split(".")[0]}`: \t ({values[1]}) {("" if user_id[0].isdigit() else "@") + user_id} [{values[2] or ''}]'''
+        lines = [f'''`{str(values[0]).split(".")[0]}`: \t ({values[1]}) {("" if user_id[:1].isdigit() else "@") + user_id} [{values[2] or ''}]'''
                  for user_id, values in users_data.items()]
 
         # Split into chunks to avoid Telegram's 4096 character limit
@@ -311,7 +320,7 @@ def admin_get_users(message):
             header = f"Users list (part {i+1}/{len(chunks)}):\n" if len(chunks) > 1 else "Users list:\n"
             bot.send_message(
                 chat_id=message.chat.id,
-                text=header + chunk.replace('_', r'\_'),
+                text=header + chunk.replace('_', r'\_').replace('*', r'\*'),
                 parse_mode='markdown'
             )
 
@@ -322,7 +331,7 @@ def catch_all(message):
         try:
             bot.forward_message(chat_id=log_chat_id, from_chat_id=message.chat.id, message_id=message.id)
         except Exception as e:
-            logging.error(f'''{message.chat.id}: {message.text}''', e)
+            logging.error(f'{message.chat.id}: {message.text}', exc_info=True)
 
 if __name__ == '__main__':
     logging.info("Starting bot polling...")
