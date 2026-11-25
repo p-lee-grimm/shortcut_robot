@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, DateTime, func, JSON
+from sqlalchemy import create_engine, Column, Integer, BigInteger, String, ForeignKey, DateTime, func, JSON
 from sqlalchemy.orm import sessionmaker, relationship, declarative_base
 from dotenv import load_dotenv
 from datetime import datetime as dt
@@ -26,7 +26,7 @@ Base = declarative_base()
 class User(Base):
     __tablename__ = 'users'
 
-    telegram_user_id = Column(Integer, nullable=False, unique=True, primary_key=True)
+    telegram_user_id = Column(BigInteger, nullable=False, unique=True, primary_key=True)
     username = Column(String, unique=False, nullable=True)
     created_at = Column(DateTime, nullable=False)
     shortcuts = relationship('Shortcut', back_populates='user')
@@ -38,7 +38,7 @@ class User(Base):
 class Shortcut(Base):
     __tablename__ = 'shortcuts'
 
-    telegram_user_id = Column(Integer, ForeignKey('users.telegram_user_id'), nullable=False)
+    telegram_user_id = Column(BigInteger, ForeignKey('users.telegram_user_id'), nullable=False)
     id = Column(Integer, primary_key=True)
     shortcut_name = Column(String, index=True, nullable=False)
     content_type = Column(String, nullable=False)
@@ -58,7 +58,7 @@ class Shortcut(Base):
 class Admin(Base):
     __tablename__ = 'admins'
 
-    telegram_user_id = Column(Integer, nullable=False, primary_key=True)
+    telegram_user_id = Column(BigInteger, nullable=False, primary_key=True)
 
     def __repr__(self):
         return f"<Admin(telegram_user_id='{self.telegram_user_id}')>"
