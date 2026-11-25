@@ -108,6 +108,11 @@ def get_input_content(shortcut):
         }
     params['id'] = shortcut.id
     params['title'] = shortcut.shortcut_name
+    if shortcut.content_type == 'audio':
+        # Cached audio results have neither title nor description: Telegram
+        # shows the title from the file's own metadata.
+        params.pop('title')
+        params.pop('description')
 
     return content_class(**params)
 
